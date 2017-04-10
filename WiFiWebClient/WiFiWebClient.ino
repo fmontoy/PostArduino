@@ -1,94 +1,156 @@
-/*
-  Web client
+#include "ESP8266WiFi.h"
 
- This sketch connects to a website (http://www.google.com)
- using a WiFi shield.
+//How many values you will be pushing to ThingWorx
+#define propertyCount 1
 
- This example is written for a network using WPA encryption. For
- WEP or WPA, change the WiFi.begin() call accordingly.
-
- This example is written for a network using WPA encryption. For
- WEP or WPA, change the WiFi.begin() call accordingly.
-
- Circuit:
- * WiFi shield attached
-
- created 13 July 2010
- by dlf (Metodo2 srl)
- modified 31 May 2012
- by Tom Igoe
- */
-
-//#include <ArduinoHttpClient.h>
-#include <SPI.h>
-#include <WiFi101.h>
-String a = "Hola mundo de http!";
-char ssid[] = "ailet"; //  your network SSID (name)
-char pass[] = "1234567890";    // your network password (use for WPA, or use as key for WEP)
-int keyIndex = 0;            // your network key Index number (needed only for WEP)
-
-int status = WL_IDLE_STATUS;
-// if you don't want to use DNS (and reduce your sketch size)
-// use the numeric IP instead of the name for the server:
-//IPAddress server(74,125,232,128);  // numeric IP for Google (no DNS)
-char server[] = "ailetapi.herokuapp.com";    // name address for Google (using DNS)
-
-// Initialize the Ethernet client library
-// with the IP address and port of the server
-// that you want to connect to (port 80 is default for HTTP):
+const char* ssid     = "Logan";
+const char* password = "";
+char server[] = "iot.dis.eafit.edu.co";
+// Use WiFiClient class to create TCP connections
 WiFiClient client;
+
+//ThingWorx App key which replaces login credentials)
+char appKey[] = "354adb08-f33a-4214-a599-66eafa18042a";
+// ThingWorx Thing name for which you want to set properties values
+char thingName[] = "TomaAilet_thing";
+//Interval of time at which you want the properties values to be sent to TWX server
+int timeBetweenRefresh = 5000;
+// ThingWorx service that will set values for the properties you need
+// See the documentation for this tutorial for more information
+char serviceName[] = "setCurrent";
+
+//Initialize Properties Names and Values Arrays
+char* propertyNames[] = {"Curr"};
+double propertyValues[propertyCount];
+
+// last time you connected to the server, in milliseconds
+unsigned long lastConnectionTime = 0;
+// state of the connection last time through the main loop
+boolean lastConnected = false;
+
+
 void setup() {
-  //Initialize serial and wait for port to open:
-  Serial.begin(9600);
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
-
-  // check for the presence of the shield:
-  if (WiFi.status() == WL_NO_SHIELD) {
-    Serial.println("WiFi shield not present");
-    // don't continue:
-    while (true);
-  }
-
-  // attempt to connect to WiFi network:
-  while (status != WL_CONNECTED) {
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(ssid);
-    // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-    status = WiFi.begin(ssid, pass);
-
-    // wait 10 seconds for connection:
-    delay(10000);
-  }
-  Serial.println("Connected to wifi");
-  printWiFiStatus();
-
-  Serial.println("\nStarting connection to server...");
-  // if you get a connection, report back via serial:
-  if (client.connect(server, 80)) {
-    Serial.println("connected to server");
-    // Make a HTTP request:
-    client.println("POST /outlets/");
-    client.println("&method=post");
-    client.println("&description=");
-    client.println(a);
-    client.println(" HTTP/1.1");
-    client.println("Host: ");
-    client.println(server);
-//    client.println("Connection: close");
-    client.println("Content-Type: text/html"); 
-    client.println();
-    Serial.println("Eso hizo el POST");
-  }
-  else{
-    Serial.println("Post Failed");
-  }
+  // put your setup code here, to run once:
+  Serial.begin(115200);
+  conectarWifi();
+  //POST(); // Post the value to the web database
+  //GET();  // If all you need to do is push data, you don't need this
 }
 
 void loop() {
-  // if there are incoming bytes available
-  // from the server, read them and print them:
+  // put your main code here, to run repeatedly:
+  float current;
+  propertyValues[0] = analogRead(0);
+  if (millis() - lastConnectionTime > timeBetweenRefresh) {
+    updateValues(propertyValues, client, server, appKey, thingName, serviceName, propertyNames);
+  }
+}
+
+void updateValues(double values[] , WiFiClient &client, char server[], char appKey[], char thingName[], char serviceName[], char* sensorNames[])
+{
+  //build the String with the data that you will send
+  //through REST calls to your TWX server
+  char data[80];
+  strcpy(data, "?appKey=");
+  strcat(data, appKey);
+  strcat(data, "&method=post&x-thingworx-session=true");
+  // if you get a connection, report back via serial:
+  if (client.connect(server, 8080)) {
+    Serial.println("connected");
+    // send the HTTP POST request:
+    client.print("POST /Thingworx/Things/");
+    client.print(thingName);
+    Serial.println(thingName);
+    client.print("/Services/");
+    client.print(serviceName);
+    client.print(data);
+    client.print("<");
+    for (int idx = 0; idx < propertyCount; idx++)
+    {
+      client.print("&");
+      client.print(propertyNames[idx]);
+      client.print("=");
+      client.print(propertyValues[idx]);
+    }
+    client.print(">");
+    client.println(" HTTP/1.1");
+    client.print("Host: ");
+    client.println(server);
+    client.println("Content-Type: text/html");
+    client.println();
+    int timeout = 0;
+    while (!client.available() && timeout > 5000) {
+      delay(1);
+      timeout++;
+    }
+    while (client.available()) {
+      char c = client.read();
+      Serial.write(c);
+    }
+    client.stop();
+    lastConnectionTime = millis();
+
+    // print the request out
+    Serial.print("POST /Thingworx/Things/");
+    Serial.print(thingName);
+    Serial.print("/Services/");
+    Serial.print(serviceName);
+    Serial.print(data);
+    Serial.print("<");
+    for (int idx = 0; idx < propertyCount; idx++)
+    {
+      Serial.print("&");
+      Serial.print(propertyNames[idx]);
+      Serial.print("=");
+      Serial.print(propertyValues[idx]);
+    }
+    Serial.print(">");
+    Serial.println(" HTTP/1.1");
+    Serial.print("Host: ");
+    Serial.println(server);
+    Serial.println("Content-Type: text/html");
+    Serial.println();
+
+
+  }
+  else {
+    // kf you didn't get a connection to the server:
+    Serial.println("the connection could not be established");
+    client.stop();
+  }
+}
+
+void conectarWifi() {
+  Serial.println();
+  Serial.println(" Iniciando conexión ");
+  WiFi.begin(ssid, password );
+  Serial.print("Conectando");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.print("Conectado, dirección IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+void GET()
+{
+  Serial.print("connecting to ");
+  Serial.println(server);
+
+  const int httpPort = 80;
+  if (!client.connect(server, httpPort)) {
+    Serial.println("connection failed");
+    return;
+  }
+  // Make a HTTP request:
+  client.println("GET /outlets HTTP/1.1");
+  client.print("Host: ");
+  client.println(server);
+  client.println("Connection: close");
+  client.println();
+  delay(500);
   while (client.available()) {
     char c = client.read();
     Serial.write(c);
@@ -105,25 +167,37 @@ void loop() {
   }
 }
 
+void POST()
+{
+  Serial.print("connecting to ");
+  Serial.println(server);
 
-void printWiFiStatus() {
-  // print the SSID of the network you're attached to:
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
+  // Use WiFiClient class to create TCP connections
+  WiFiClient client;
+  const int httpPort = 80;
+  if (!client.connect(server, httpPort)) {
+    Serial.println("connection failed");
+    return;
+  }
 
-  // print your WiFi shield's IP address:
-  IPAddress ip = WiFi.localIP();
-  Serial.print("IP Address: ");
-  Serial.println(ip);
+  Serial.println("Requesting POST: ");
+  client.print("POST /outlets/");
+  client.print("?description=");
+  //client.print(a);
+  client.println(" HTTP/1.1");
+  client.print("Host: ");
+  client.println(server);
+  client.println("Content-Type: application/x-www-form-urlencoded");
+  client.println("Cache-Control: no-cache");
+  client.println("Connection: close");
+  client.println();
+  delay(500); // Can be changed
 
-  // print the received signal strength:
-  long rssi = WiFi.RSSI();
-  Serial.print("signal strength (RSSI):");
-  Serial.print(rssi);
-  Serial.println(" dBm");
+  // Read all the lines of the reply from server and print them to Serial
+  while (client.available()) {
+    String line = client.readStringUntil('\r');
+    Serial.print(line);
+  }
+  Serial.println();
+  Serial.println("closing connection");
 }
-
-
-
-
-
