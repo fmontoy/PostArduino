@@ -218,7 +218,7 @@ void setup() {
 }
 
 void loop() {
-  propertyValues[0] = meanFilter.AddValue(analogRead(0));;
+  propertyValues[0] = meanFilter.AddValue(analogRead(0));
   //propertyValues[1] = 200;
   if (millis() - lastConnectionTime > TPOST) {
     POST(sensorCount, propertyNames, propertyValues);
