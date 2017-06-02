@@ -1,13 +1,13 @@
 //Libraries
-#include "MeanFilterLib.h"
+//#include "MeanFilterLib.h"
 #include <ESP8266WiFi.h>
 #include <Time.h>
-#include <ArduinoJson.h>
+//#include <ArduinoJson.h>
 
 //Pin I/O Labeling
 #define CurrSensor 0  //IR distance sensor connected to Arduino analog pin 0
 
-MeanFilter<float> meanFilter(10);
+//MeanFilter<float> meanFilter(10);
 //Constants
 const unsigned long TPOST = 1000;  //Delay between TWX POST updates, 1000 milliseconds
 const unsigned int sensorCount = 1;  //Number of sensor vars sent to TWX, 1 var
@@ -31,9 +31,10 @@ float propertyValues[sensorCount]; //Vector for Var values
 //unsigned int Write2 = 0;  //Write2 value from twx (Electrovalve)
 //->Timing Vars
 unsigned long lastConnectionTime = 0; //Last time you connected to the server, in milliseconds
-unsigned int tiempoMax = 500;
+unsigned int tiempoMax = 5000;
 unsigned int t1;
-int relay = 0;
+unsigned int t2;
+int relay = 5;
 String devices[2];
 //Subroutines & Functions
 void printWifiStatus() {
@@ -131,30 +132,29 @@ void POST_Azure(float values[]){
   
 }
 
-void tiempo(){
-  t1 = millis();
-}
-
 void setup() {
-  pinMode(relay,OUTPUT);
-  digitalWrite(relay,LOW);
+  pinMode(5,OUTPUT);
+  digitalWrite(5,LOW);
   //Communications initialization
   Serial.begin(115200);
   WiFiInit();
+  t1 = millis();
 }
 
 void loop() {
   propertyValues[0] = get_corriente(200);
   delay(500);
-  tiempo();
-  if((devices[0]== devices[1]) && (millis()-t1 >= tiempoMax)){
-    digitalWrite(relay,HIGH);
-    tiempo();
-    while(millis() -t1 <= tiempoMax){
-      tiempo();
+  t2 = millis();
+  if((devices[0]== devices[1]) && (t2-t1 >= tiempoMax)){
+    Serial.println("Entró");
+    digitalWrite(5,HIGH);
+    t1 = t2 = millis();
+    while(t2 -t1 <= tiempoMax){
+      t2=millis();
     }
+    t1=millis();
   }
-  digitalWrite(relay,LOW);
+  digitalWrite(5,LOW);
   if (millis() - lastConnectionTime > TPOST) {
     POST_Azure(propertyValues);
     lastConnectionTime = millis();
